@@ -1,0 +1,27 @@
+{
+  "name": "ddms",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace web",
+    "dev:api": "npm run start:dev --workspace api",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspace api",
+    "test:e2e": "npm run test:e2e --workspace api",
+    "db:generate": "npm run prisma:generate --workspace api",
+    "db:migrate": "npm run prisma:migrate --workspace api",
+    "db:seed": "npm run prisma:seed --workspace api",
+    "admin:bootstrap": "npm run admin:bootstrap --workspace api"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "prisma@6.19.3": true,
+    "argon2@0.45.2": true
+  }
+}

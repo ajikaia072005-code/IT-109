@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName {
+  SYSTEM_ADMIN
+  DEPARTMENT_HEAD
+  FACULTY
+  STAFF
+  ORGANIZATION
+  VIEWER_STUDENT
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum RoleApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+}
+
+model User {
+  id                       String                   @id @default(cuid())
+  fullName                 String                   @map("full_name") @db.VarChar(160)
+  email                    String                   @unique @db.VarChar(320)
+  passwordHash             String                   @map("password_hash")
+  status                   UserStatus               @default(PENDING_VERIFICATION)
+  emailVerifiedAt          DateTime?                @map("email_verified_at") @db.Timestamptz(6)
+  sessionVersion           Int                      @default(0) @map("session_version")
+  createdAt                DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  roleAssignment           UserRole?
+  roleApplications         RoleApplication[]        @relation("RoleApplicationApplicant")
+  reviewedRoleApplications RoleApplication[]        @relation("RoleApplicationReviewer")
+  verificationTokens       EmailVerificationToken[]
+  auditLogs                AuditLog[]
+  notifications            Notification[]
+
+  @@index([status, createdAt])
+  @@map("users")
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        RoleName         @unique
+  description String           @db.VarChar(240)
+  assignments UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique @db.VarChar(96)
+  description String           @db.VarChar(240)
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId     String   @unique @map("user_id")
+  roleId     String   @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RoleApplication {
+  id             String                @id @default(cuid())
+  userId         String                @map("user_id")
+  requestedRole  RoleName              @map("requested_role")
+  reason         String                @db.Text
+  status         RoleApplicationStatus @default(PENDING)
+  submittedAt    DateTime              @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  reviewedAt     DateTime?             @map("reviewed_at") @db.Timestamptz(6)
+  reviewedById   String?               @map("reviewed_by_id")
+  reviewNote     String?               @map("review_note") @db.Text
+  applicant      User                  @relation("RoleApplicationApplicant", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer       User?                 @relation("RoleApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status, submittedAt])
+  @@map("role_applications")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("email_verification_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  action     String   @db.VarChar(96)
+  targetType String   @map("target_type") @db.VarChar(96)
+  targetId   String   @map("target_id") @db.VarChar(96)
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id                 String              @id @default(cuid())
+  userId             String              @map("user_id")
+  type               String              @db.VarChar(96)
+  title              String              @db.VarChar(160)
+  body               String              @db.Text
+  readAt             DateTime?           @map("read_at") @db.Timestamptz(6)
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  emailStatus        EmailDeliveryStatus @default(PENDING) @map("email_status")
+  emailAttempts      Int                 @default(0) @map("email_attempts")
+  emailNextAttemptAt DateTime            @default(now()) @map("email_next_attempt_at") @db.Timestamptz(6)
+  emailLeaseUntil    DateTime?           @map("email_lease_until") @db.Timestamptz(6)
+  emailLeaseId       String?             @map("email_lease_id") @db.VarChar(64)
+  emailSentAt        DateTime?           @map("email_sent_at") @db.Timestamptz(6)
+  emailLastError     String?             @map("email_last_error") @db.VarChar(1000)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([emailStatus, emailNextAttemptAt])
+  @@map("notifications")
+}
